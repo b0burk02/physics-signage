@@ -1,0 +1,11 @@
+{
+  "_instructions": "Add an entry for each file in this folder to give it a title and description. Both fields are optional — if omitted the filename is used as the title.",
+  "example_video.mp4": {
+    "title": "Quantum Materials Research",
+    "description": "Prof. Smith's group studying topological insulators at Rutgers"
+  },
+  "example_photo.jpg": {
+    "title": "Astrophysics Lab",
+    "description": ""
+  }
+}
