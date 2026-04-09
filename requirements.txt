@@ -1,0 +1,5 @@
+requests>=2.31
+beautifulsoup4>=4.12
+qrcode>=7.4
+# Optional but recommended — enables abstract scraping from the website
+# playwright>=1.43
