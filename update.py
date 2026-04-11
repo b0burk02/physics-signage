@@ -22,7 +22,7 @@ import json
 import logging
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -266,6 +266,53 @@ def _parse_newsletter(soup: BeautifulSoup) -> dict:
         "nl_issue":    nl_issue,
         "nl_date":     nl_date,
     }
+
+
+# ── Past-event filter ────────────────────────────────────────────────────────
+
+_MONTH_NUM = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_event_date(date_str: str) -> date | None:
+    """Parse 'Apr 7' into a date object. Infers year from today's context."""
+    parts = date_str.strip().split()
+    if len(parts) != 2:
+        return None
+    month_num = _MONTH_NUM.get(parts[0].lower()[:3])
+    if not month_num:
+        return None
+    try:
+        year = datetime.now().year
+        d = date(year, month_num, int(parts[1]))
+        # If the result is more than 6 months in the past it's probably next year
+        if (date.today() - d).days > 180:
+            d = date(year + 1, month_num, int(parts[1]))
+        return d
+    except ValueError:
+        return None
+
+
+def filter_past_events(events: list) -> list:
+    """
+    Drop current-week events whose date is strictly before today.
+    Next-week events are always kept — they are by definition in the future.
+    Events with unparseable dates are kept (better to show than silently drop).
+    """
+    today = date.today()
+    result = []
+    for e in events:
+        if e.get("section") == "next":
+            result.append(e)
+            continue
+        d = _parse_event_date(e.get("date", ""))
+        if d is None or d >= today:
+            result.append(e)
+        else:
+            log.debug(f"Dropping past event: {e.get('type')} {e.get('date')} — {e.get('speaker','')}")
+    return result
 
 
 # ── Website scraper (Playwright, optional) ────────────────────────────────────
@@ -1311,7 +1358,12 @@ def run() -> Path:
             "python -m playwright install chromium"
         )
 
-    # 3. News, special events, and QR codes (best-effort, no challenge wall)
+    # 3. Drop events from earlier in the week
+    colloquium = filter_past_events(colloquium)
+    seminars   = filter_past_events(seminars)
+    log.info(f"After filtering: {len(colloquium)} colloquium, {len(seminars)} seminars")
+
+    # 4. News, special events, and QR codes (best-effort, no challenge wall)
     news     = fetch_news()
     irons    = fetch_irons_lecture()
     qr_codes = generate_qr_codes()
@@ -1327,7 +1379,7 @@ def run() -> Path:
         "updated_at": datetime.now().isoformat(),
     }
 
-    # 4. If nothing was scraped, fall back to last good cache
+    # 5. If nothing was scraped, fall back to last good cache
     if not colloquium and not seminars:
         cached = load_cache()
         if cached:
@@ -1335,7 +1387,7 @@ def run() -> Path:
             cached["updated_at"] = data["updated_at"]  # keep timestamp fresh
             data = cached
 
-    # 5. Save cache
+    # 6. Save cache
     CACHE_FILE.write_text(
         json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
     )
