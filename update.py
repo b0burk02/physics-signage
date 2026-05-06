@@ -315,6 +315,33 @@ def filter_past_events(events: list) -> list:
     return result
 
 
+def irons_is_past(irons: dict) -> bool:
+    """
+    Return True if the Irons lecture date has already passed.
+    The date string is a full phrase like 'Tuesday April 28, 2026'.
+    Returns False (keep showing) if the date can't be parsed.
+    """
+    date_str = irons.get("date", "").strip()
+    if not date_str:
+        return False
+    # Try progressively looser formats
+    for fmt in ("%A %B %d, %Y", "%B %d, %Y", "%A %B %d %Y", "%B %d %Y"):
+        try:
+            return datetime.strptime(date_str, fmt).date() < date.today()
+        except ValueError:
+            pass
+    # Strip leading weekday name and retry: "Tuesday April 28, 2026" → "April 28, 2026"
+    m = re.match(r'\w+\s+(.+)', date_str)
+    if m:
+        for fmt in ("%B %d, %Y", "%B %d %Y"):
+            try:
+                return datetime.strptime(m.group(1).strip(), fmt).date() < date.today()
+            except ValueError:
+                pass
+    log.debug(f"Irons date unparseable: '{date_str}' — keeping slide")
+    return False
+
+
 # ── Website scraper (Playwright, optional) ────────────────────────────────────
 
 def _solve_slider_challenge(page) -> bool:
@@ -1366,6 +1393,9 @@ def run() -> Path:
     # 4. News, special events, and QR codes (best-effort, no challenge wall)
     news     = fetch_news()
     irons    = fetch_irons_lecture()
+    if irons and irons_is_past(irons):
+        log.info(f"Irons lecture '{irons.get('date')}' is in the past — hiding slide")
+        irons = {}
     qr_codes = generate_qr_codes()
 
     data = {
